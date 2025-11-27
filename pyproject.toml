@@ -13,6 +13,7 @@ dependencies = [
     "fastparquet>=2024.11.0",
     "google-generativeai>=0.8.5",
     "gradio>=5.49.1",
+    "html5lib>=1.1",
     "langchain>=1.0.7",
     "langchain-community>=0.4.1",
     "langchain-openai>=1.0.3",

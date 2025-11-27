@@ -12,9 +12,9 @@ def website_to_excel():
     if "content" not in excel_df.columns:
         excel_df["content"] = ""
     try:
+        scraper = WebsiteScraper()
         for index, row in excel_df.iterrows():
             print(f"Scraping URL: {row["URL"]}")
-            scraper = WebsiteScraper()
             status_code, content = scraper.scrape_website(row["URL"])
             if status_code != 200:
                 print(f"Failed to scrape {row["URL"]} with status code {status_code}")

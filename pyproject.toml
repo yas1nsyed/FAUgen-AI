@@ -6,16 +6,15 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "beautifulsoup4>=4.14.2",
-    "deepagents>=0.2.7",
     "dotenv>=0.9.9",
     "embeddings>=0.0.8",
     "faiss-cpu>=1.13.0",
     "fastparquet>=2024.11.0",
-    "google-generativeai>=0.8.5",
     "gradio>=5.49.1",
     "html5lib>=1.1",
-    "langchain>=1.0.7",
+    "langchain==1.0.0",
     "langchain-community>=0.4.1",
+    "langchain-google-genai>=3.2.0",
     "langchain-openai>=1.0.3",
     "lxml>=6.0.2",
     "openai>=2.8.1",

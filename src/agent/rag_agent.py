@@ -56,7 +56,7 @@ class RAGAgent:
         self.emb_store.load()
         self.model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-mpnet-base-v2")
 
-    def top_k_unique(self, links, texts, scores, k=5):
+    def top_k_unique(self, links, texts, scores, k):
         seen = set()
         unique_results = []
 
@@ -70,7 +70,7 @@ class RAGAgent:
         return unique_results
 
 
-    def query(self, query_text: str, top_k: int = 5):
+    def query(self, query_text: str, top_k: int):
         search_k = 100
 
         q_emb = self.model.encode(query_text, convert_to_numpy=True).reshape(1, -1).astype("float32")
@@ -91,18 +91,11 @@ class RAGAgent:
     def scrape(self, url: str) -> str:                                 # NEW SCRAPER COMES HERE
         try:
             text = WebsiteScraper().scrape_website(url)
-            # resp = requests.get(url, timeout=5)
-            # resp.raise_for_status()
-            # soup = BeautifulSoup(resp.text, "html.parser")
-            # # Remove scripts/styles
-            # for script in soup(["script", "style"]):
-            #     script.extract()
-            # text = " ".join(soup.stripped_strings)
             return text
         except Exception as e:
             return f"[Error fetching URL: {e}]"
 
-    def rag(self, query_text: str, top_k: int = 5):
+    def rag(self, query_text: str, top_k: int):
         """
         Retrieve links via FAISS + scrape each link's content for RAG.
         """

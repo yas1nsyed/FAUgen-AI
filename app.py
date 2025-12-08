@@ -4,8 +4,8 @@ from src.agent.rag_agent import RAGAgent
 
 # Model catalog for dropdowns
 MODEL_CATALOG = {
-    "OpenAI": ["gpt-5-mini", "gpt-4o-mini"],
     "Google": ["gemini-2.5-flash", "gemini-2.5-pro"],
+    "OpenAI": ["gpt-5-mini", "gpt-4o-mini"],
     "Ollama": ["gemma3:270", "gemma3n:e4b"]
 }
 
@@ -66,7 +66,7 @@ def get_answer_from_rag(user_query: str):
 User Question:
 {user_query}
 
-Use ONLY the provided context to answer:
+Use the provided context to answer:
 
 Context:
 {context_text}

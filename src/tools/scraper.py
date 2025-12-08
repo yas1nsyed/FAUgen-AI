@@ -44,7 +44,7 @@ class WebsiteScraper:
             final_scraped_content = {
                 "title": title,
                 "meta_description": meta_description,
-                "content": clean_format.get_text(separator='\n', strip=True)
+                "content": clean_format.get_text(separator=' ', strip=True)
             }
             return  response.status_code ,final_scraped_content
 

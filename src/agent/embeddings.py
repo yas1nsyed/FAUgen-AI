@@ -5,7 +5,7 @@ import torch
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
 
-EMBEDDING_DIM = 768
+EMBEDDING_DIM = 1024
 INDEX_PATH = "data/embeddings.index"
 METADATA_PATH = "data/metadata.parquet"
 
@@ -34,7 +34,7 @@ class EmbeddingStore:
 
 
     @staticmethod
-    def chunk_text(text, chunk_size=2000, overlap=250):
+    def chunk_text(text, chunk_size=22000, overlap=2200):
         chunks = []
         start = 0
 
@@ -46,14 +46,28 @@ class EmbeddingStore:
 
         return chunks
 
+    def clean_page_value(value):
+        """Convert Excel page column into a safe integer."""
+        try:
+            if value is None:
+                return -1
+            s = str(value).strip()
+            if s == "":
+                return -1
+            return int(float(s))   # handles "10.0", 42.0 values
+        except Exception:
+            return -1
 
     @staticmethod
     def build_embeddings_from_excel(excel_file: str):
         print(f"[embeddings.py] Loading Excel → {excel_file}")
         df = pd.read_excel(excel_file).fillna("")
 
+        # model = SentenceTransformer(
+        #     "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+        # )
         model = SentenceTransformer(
-            "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+            "Qwen/Qwen3-Embedding-4B"
         )
 
         all_chunks = []
@@ -62,6 +76,8 @@ class EmbeddingStore:
         for idx, row in df.iterrows():
             doc_id = str(row[0])      # Link or ID in column 1
             full_text = str(row[5])   # Main text in column 6
+            pdf_page_start = EmbeddingStore.clean_page_value(row[6])
+            pdf_page_end = EmbeddingStore.clean_page_value(row[7])
 
             chunks = EmbeddingStore.chunk_text(full_text)
 
@@ -71,7 +87,9 @@ class EmbeddingStore:
                     "doc_id": doc_id,
                     "row": idx,
                     "chunk_id": chunk_id,
-                    "chunk_text": chunk
+                    "chunk_text": chunk,
+                    "pdf_page_start": pdf_page_start,
+                    "pdf_page_end": pdf_page_end
                 })
 
         print(f"Total chunks created: {len(all_chunks)}")
@@ -79,7 +97,7 @@ class EmbeddingStore:
         embeddings = model.encode(
             all_chunks,
             convert_to_tensor=True,
-            batch_size=256,
+            batch_size=4,
             show_progress_bar=True
         )
 
@@ -98,5 +116,5 @@ class EmbeddingStore:
 # --- Runner ---
 if __name__ == "__main__":
     EmbeddingStore.build_embeddings_from_excel(
-        "src/excel_processing/aces_metadata_output.xlsx"
+        "/home/ubuntu/projects/FAUgen-AI/src/excel_processing/combined_output.xlsx" # Enter path to the Excel file containing URLS and descriptions
     )

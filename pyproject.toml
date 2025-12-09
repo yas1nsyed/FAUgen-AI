@@ -12,6 +12,7 @@ dependencies = [
     "fastparquet>=2024.11.0",
     "gradio>=5.49.1",
     "html5lib>=1.1",
+    "huggingface-hub>=0.36.0",
     "langchain==1.0.0",
     "langchain-community>=0.4.1",
     "langchain-google-genai>=3.2.0",

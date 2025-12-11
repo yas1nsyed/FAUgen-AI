@@ -6,7 +6,6 @@ from pathlib import Path
 from sentence_transformers import SentenceTransformer, CrossEncoder, util
 import requests
 from bs4 import BeautifulSoup
-from .embeddings import DocumentStore, EmbeddingStore
 from src.tools.scraper import WebsiteScraper
 from huggingface_hub import hf_hub_download
 import fitz
@@ -25,7 +24,7 @@ METADATA_PATH = hf_hub_download(
 # INDEX_PATH = "/home/ubuntu/projects/FAUgen-AI/data/embeddings.index"
 # METADATA_PATH = "/home/ubuntu/projects/FAUgen-AI/data/metadata.parquet"
 
-class DocumentStore:
+class DocumentStoreLoad:
     def __init__(self):
         self.df = None
 
@@ -48,7 +47,7 @@ class DocumentStore:
     def pdf_end_page(self, indices):
         return (self.df.iloc[indices, 5].astype(int)).tolist()
 
-class EmbeddingStore:
+class EmbeddingStoreLoad:
     def __init__(self):
         self.index = None
 
@@ -60,7 +59,7 @@ class EmbeddingStore:
         else:
             raise FileNotFoundError(f"{INDEX_PATH} not found. Run embeddings builder first.")
 
-    def search(self, query_vec: np.ndarray, top_k: int = 5, efSearch: int = 400):
+    def search(self, query_vec: np.ndarray, top_k: int, efSearch: int= 400):
         faiss.normalize_L2(query_vec)
         self.index.hnsw.efSearch = efSearch
         scores, indices = self.index.search(query_vec, top_k)
@@ -68,54 +67,14 @@ class EmbeddingStore:
 
 class RAGAgent:
     def __init__(self):
-        self.doc_store = DocumentStore()
+        self.doc_store = DocumentStoreLoad()
         self.doc_store.load()
-        self.emb_store = EmbeddingStore()
+        self.emb_store = EmbeddingStoreLoad()
         self.emb_store.load()
+        
         # self.model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-mpnet-base-v2")
         self.model = SentenceTransformer("Qwen/Qwen3-Embedding-4B")
 
-    def top_k_unique(self, links, texts, scores, k):
-        seen = set()
-        unique_results = []
-
-        for link, text, score in zip(links, texts, scores):
-            if link not in seen:
-                seen.add(link)
-                unique_results.append((link, text, float(score)))
-            if len(unique_results) == k:
-                break
-
-        return unique_results
-
-
-    def query(self, query_text: str, top_k: int, return_indices=False):
-        search_k = 100
-
-        q_emb = self.model.encode(query_text, convert_to_numpy=True).reshape(1, -1).astype("float32")
-        scores, indices = self.emb_store.search(q_emb, top_k=search_k)
-
-        links = self.doc_store.get_links(indices)
-        texts = self.doc_store.get_texts(indices)
-
-        if return_indices:
-            return links, texts, scores, indices
-
-        return links, texts, scores
-
-        # top_unique = self.top_k_unique(links, texts, scores, k=top_k)
-
-        # if len(top_unique) == 0:
-        #     raise ValueError("No unique RAG results found.")
-
-        # unique_links, unique_texts, unique_scores = zip(*top_unique)
-
-        # if return_indices:
-        #     return unique_links, unique_texts, unique_scores, indices
-
-        # return unique_links, unique_texts, unique_scores
-
-    
     def extract_pdf_pages(self, url: str, start_page: int, end_page: int) -> str:
         """
         Download PDF and extract only the pages belonging to the embedding chunk.
@@ -139,44 +98,105 @@ class RAGAgent:
         except Exception as e:
             return f"[Error fetching URL: {e}]"
 
-    def rag(self, query_text: str, top_k: int):
+    def filter_results(self, links, texts, scores, max_outputs, max_pdf_outputs):
         """
-        Retrieve links via FAISS.
-        If link is a PDF → load PDF → extract only the pages belonging to the embedding chunk.
-        Otherwise → scrape website normally.
+        Ensures:
+        - websites: max 1 result per unique link
+        - pdfs: up to max_pdf_outputs allowed
+        - total results = max_outputs
+        """
+        seen_websites = set()
+        pdf_count = 0
+
+        filtered_links = []
+        filtered_texts = []
+        filtered_scores = []
+
+        for link, text, score in zip(links, texts, scores):
+
+            is_pdf = link.lower().endswith(".pdf")
+
+            if is_pdf:
+                if pdf_count >= max_pdf_outputs:
+                    continue
+                pdf_count += 1
+
+            else:
+                if link in seen_websites:
+                    continue
+                seen_websites.add(link)
+
+            filtered_links.append(link)
+            filtered_texts.append(text)
+            filtered_scores.append(float(score))
+
+            if len(filtered_links) == max_outputs:
+                break
+
+        return filtered_links, filtered_texts, filtered_scores
+
+    def query(self, query_text: str, top_k: int, return_indices=False):
+        search_k = 5 * top_k   # retrieve more candidates
+
+        q_emb = self.model.encode(query_text, convert_to_numpy=True).reshape(1, -1).astype("float32")
+        scores, indices = self.emb_store.search(q_emb, top_k=search_k)
+
+        links = self.doc_store.get_links(indices)
+        texts = self.doc_store.get_texts(indices)
+
+        if return_indices:
+            return links, texts, scores, indices
+
+        return links, texts, scores
+
+    def rag(self, query_text: str, max_outputs: int, max_pdf_outputs: int = 7):
+        """
+        1. Run FAISS search
+        2. Filter:
+            - only 1 output per website (unique)
+            - max_pdf_outputs for PDFs
+            - total max_outputs overall
+        3. Extract text (scrape / PDF)
         """
 
-        # FIX 1 — query() must return indices too
-        links, texts, scores, indices = self.query(query_text, top_k=top_k, return_indices=True)
+        links, texts, scores, indices = self.query(
+            query_text,
+            top_k=max_outputs,
+            return_indices=True
+        )
 
-        # FIX 2 — use SAME filtered indices for page lookup
+        # filter results by link type (PDF / non-PDF)
+        final_links, final_texts, final_scores = self.filter_results(
+            links=links,
+            texts=texts,
+            scores=scores,
+            max_outputs=max_outputs,
+            max_pdf_outputs=max_pdf_outputs
+        )
+
+        # retrieve page ranges
         start_pages = self.doc_store.pdf_start_page(indices)
-        end_pages = self.doc_store.pdf_end_page(indices)
+        end_pages   = self.doc_store.pdf_end_page(indices)
 
         rag_outputs = []
 
-        for i, link in enumerate(links):
+        for i, link in enumerate(final_links):
 
-            # Case 1: PDF links
             if link.lower().endswith(".pdf"):
                 try:
-                    # extract the PDF text
                     extracted_text = self.extract_pdf_pages(
                         url=link,
                         start_page=start_pages[i],
                         end_page=end_pages[i]
                     )
-
                     rag_outputs.append(
                         f"[RAG output] Link: {link}\n{extracted_text}"
                     )
-
                 except Exception as e:
                     rag_outputs.append(
                         f"[RAG output] Link: {link}\nPDF read error: {e}"
                     )
 
-            # Case 2: Website links
             else:
                 try:
                     website_text = self.scrape(link)
@@ -189,26 +209,3 @@ class RAGAgent:
                     )
 
         return rag_outputs
-
-# import pandas as pd
-# from pathlib import Path
-
-# METADATA_PATH = "/home/ubuntu/projects/FAUgen-AI/data/metadata.parquet"
-
-# # Initialize and load
-# store = DocumentStore()
-# store.load()
-
-# n = len(store.df)
-# # Suppose you want to check the first 5 rows
-# indices = list(range(n-5,n))
-
-# links = store.get_links(indices)
-# texts = store.get_texts(indices)
-# start_pages = store.pdf_start_page(indices)
-# end_pages = store.pdf_end_page(indices)
-
-# print("Links:", links)
-# print("Texts:", texts)
-# print("Start pages:", start_pages)
-# print("End pages:", end_pages)

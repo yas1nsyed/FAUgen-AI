@@ -51,7 +51,7 @@ def get_answer_from_rag(user_query: str):
         return []
     
     rag_agent = RAGAgent()
-    rag_outputs = rag_agent.rag(user_query, top_k=5)
+    rag_outputs = rag_agent.rag(user_query, max_outputs=10)
     context_chunks = []
 
     for item in rag_outputs:

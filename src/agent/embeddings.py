@@ -9,13 +9,13 @@ EMBEDDING_DIM = 1024
 INDEX_PATH = "data/embeddings.index"
 METADATA_PATH = "data/metadata.parquet"
 
-class DocumentStore:
+class DocumentStoreSave:
     def save(self, df: pd.DataFrame):
         Path(METADATA_PATH).parent.mkdir(parents=True, exist_ok=True)
         df.to_parquet(METADATA_PATH, index=False)
         print(f"[DocumentStore] Saved metadata → {METADATA_PATH}")
 
-class EmbeddingStore:
+class EmbeddingStoreSave:
     
     def build_and_save(self, embeddings: torch.Tensor):
         Path(INDEX_PATH).parent.mkdir(parents=True, exist_ok=True)
@@ -34,7 +34,7 @@ class EmbeddingStore:
 
 
     @staticmethod
-    def chunk_text(text, chunk_size=22000, overlap=2200):
+    def chunk_text(text, chunk_size=2000, overlap=200):
         chunks = []
         start = 0
 
@@ -45,7 +45,8 @@ class EmbeddingStore:
             start += chunk_size - overlap
 
         return chunks
-
+    
+    @staticmethod
     def clean_page_value(value):
         """Convert Excel page column into a safe integer."""
         try:
@@ -76,10 +77,10 @@ class EmbeddingStore:
         for idx, row in df.iterrows():
             doc_id = str(row[0])      # Link or ID in column 1
             full_text = str(row[5])   # Main text in column 6
-            pdf_page_start = EmbeddingStore.clean_page_value(row[6])
-            pdf_page_end = EmbeddingStore.clean_page_value(row[7])
+            pdf_page_start = EmbeddingStoreSave.clean_page_value(row[6])
+            pdf_page_end = EmbeddingStoreSave.clean_page_value(row[7])
 
-            chunks = EmbeddingStore.chunk_text(full_text)
+            chunks = EmbeddingStoreSave.chunk_text(full_text)
 
             for chunk_id, chunk in enumerate(chunks):
                 all_chunks.append(chunk)
@@ -98,16 +99,17 @@ class EmbeddingStore:
             all_chunks,
             convert_to_tensor=True,
             batch_size=4,
-            show_progress_bar=True
+            show_progress_bar=True,
+            normalize_embeddings=True 
         )
 
         # SAVE METADATA (convert list → DataFrame)
         metadata_df = pd.DataFrame(metadata)
-        doc_store = DocumentStore()
+        doc_store = DocumentStoreSave()
         doc_store.save(metadata_df)
 
         # SAVE EMBEDDINGS
-        emb_store = EmbeddingStore()
+        emb_store = EmbeddingStoreSave()
         emb_store.build_and_save(embeddings)
 
         print("Embedding database built successfully!")
@@ -115,6 +117,6 @@ class EmbeddingStore:
 
 # --- Runner ---
 if __name__ == "__main__":
-    EmbeddingStore.build_embeddings_from_excel(
+    EmbeddingStoreSave.build_embeddings_from_excel(
         "/home/ubuntu/projects/FAUgen-AI/src/excel_processing/combined_output.xlsx" # Enter path to the Excel file containing URLS and descriptions
     )
